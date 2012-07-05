@@ -8,8 +8,8 @@ Group:  Application/System
 Source: %{name}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Requires: libvzctl >= 6.0.0-7, ploop-lib >= 6.1.0-3
-BuildRequires: libvzctl >= 6.0.0-7
-BuildRequires: libvzctl-devel >= 6.0.0-7, ploop-devel >= 6.1.0-3
+BuildRequires: libvzctl >= 6.0.0-7, libvzctl-devel >= 6.0.0-7
+BuildRequires: ploop-lib >= 6.1.0-3, ploop-devel >= 6.1.0-3
 
 %description
 This utility cleans up the unused disk space on expanding virtual hard disks
