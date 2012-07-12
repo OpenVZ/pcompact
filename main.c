@@ -269,7 +269,7 @@ int main(int argc, char **argv)
 
 	err = parse_config();
 	if (err < 0) {
-		fprintf(stderr, "Can't parse config: %s", COMPACT_CONF);
+		fprintf(stderr, "Can't parse config: %s\n", COMPACT_CONF);
 		return 1;
 	}
 
