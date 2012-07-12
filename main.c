@@ -37,54 +37,23 @@ static void sigint_handler(int signo)
 	stop = 1;
 }
 
-static int ploop_get_dev_and_mnt(const char *disk_descriptor,
-				char *dev, int dlen, char *mnt, int mlen)
-{
-	int ret;
-	struct ploop_disk_images_data *di = ploop_alloc_diskdescriptor();
-
-	if (ploop_read_diskdescriptor(disk_descriptor, di)) {
-		ploop_free_diskdescriptor(di);
-		return -1;
-	}
-
-	ret = ploop_get_dev(di, dev, dlen);
-	ploop_free_diskdescriptor(di);
-	if (ret < 0)
-		return -1;
-
-	if (ret == 1) {
-		vzctl2_log(-1, 0, "The image isn't mounted");
-		return -1;
-	}
-
-	if (ploop_get_mnt_by_dev(dev, mnt, mlen)) {
-		fprintf(stderr, "Unable to find mount point for %s\n", dev);
-		return -1;
-	}
-
-	return 0;
-
-}
-
 int ploop_compact(const char *descr)
 {
 	int err = 0;
 	double rate;
 	struct ploop_discard_stat pds;
-	char device[PATH_MAX];
-	char mount_point[PATH_MAX];
+	struct ploop_disk_images_data *di = ploop_alloc_diskdescriptor();
 
-	err = ploop_get_dev_and_mnt(descr, device, sizeof(device),
-				mount_point, sizeof(mount_point));
-	if (err) {
-		vzctl2_log(-1, 0, "Can't get parameters of %s", descr);
-		return err;
+	if (ploop_read_diskdescriptor(descr, di)) {
+		ploop_free_diskdescriptor(di);
+		return -1;
 	}
 
-	err = ploop_discard_get_stat(device, mount_point, &pds);
-	if (err)
+	err = ploop_discard_get_stat(di, &pds);
+	if (err) {
+		ploop_free_diskdescriptor(di);
 		return err;
+	}
 
 	vzctl2_log(1, 0, "Disk: %s", descr);
 	vzctl2_log(1, 0, "Data size:    %8ldMB", pds.data_size >> 20);
@@ -101,9 +70,10 @@ int ploop_compact(const char *descr)
 
 		vzctl2_log(0, 0, "To free %.0fMB", rate / (1 << 20));
 		if (!config.dry)
-			err = ploop_discard(device, mount_point, 0, rate, &stop);
+			err = ploop_discard(di, 0, rate, &stop);
 	}
 
+	ploop_free_diskdescriptor(di);
 	return err;
 }
 
