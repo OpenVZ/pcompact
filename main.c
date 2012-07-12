@@ -116,15 +116,18 @@ static int parse_config()
 	conf = vzctl2_conf_open(COMPACT_CONF, 0, &err);
 	if (err)
 		return -1;
+	res = NULL;
 	err = vzctl2_conf_get_param(conf, "THRESHOLD", &res);
 	if (err)
 		goto err;
-	config.threshhold = atoi(res);
-
+	if (res)
+		config.threshhold = atoi(res);
+	res = NULL;
 	err = vzctl2_conf_get_param(conf, "DELTA", &res);
 	if (err)
 		goto err;
-	config.delta = atoi(res);
+	if (res)
+		config.delta = atoi(res);
 err:
 	vzctl2_conf_close(conf);
 
