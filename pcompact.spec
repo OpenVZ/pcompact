@@ -1,13 +1,13 @@
 Summary: Parallels utilities for Compacting Virtual Disks
 Name: pcompact
 Version: 6.1.0
-Release: 5
+Release: 6
 License: Parallels
 Group:  Application/System
 
 Source: %{name}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
-Requires: libvzctl >= 6.0.0-7, ploop-lib >= 6.1.0-3
+Requires: libvzctl >= 6.0.0-7, ploop-lib >= 6.1.0-4
 BuildRequires: libvzctl >= 6.0.0-7, libvzctl-devel >= 6.0.0-7
 BuildRequires: ploop-lib >= 6.1.0-4, ploop-devel >= 6.1.0-4
 
