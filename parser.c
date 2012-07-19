@@ -56,8 +56,14 @@ static int list_yajl_start_map(void * ctx)
 	struct vps_list *l = (struct vps_list *) ctx;
 
 	if (l->size < (l->num + 1) * sizeof(struct vps)) {
-		l->size += 4096;
-		l->vpses = realloc(l->vpses, l->size);
+		int size = l->size + 4096;
+		void *p = realloc(l->vpses, size);
+		if (p == NULL) {
+			vzctl2_log(-1, ENOMEM, "Not enought memory");
+			return -1;
+		}
+		l->vpses = p;
+		l->size = size;
 	}
 
 	memset(l->vpses + l->num, 0, sizeof(struct vps));
@@ -83,11 +89,21 @@ static int disk_yajl_string(void *ctx, const unsigned char * stringVal,
 		const char ddxml[] = "/root.hdd/DiskDescriptor.xml";
 
 		if (l->size < (l->num + 1) * sizeof(char *)) {
-			l->size += 4096;
-			l->disks = realloc(l->disks, l->size);
+			int size = l->size + 4096;
+			void *p = realloc(l->disks, size);
+			if (p == NULL) {
+				vzctl2_log(-1, ENOMEM, "Not enought memory");
+				return -1;
+			}
+			l->disks = p;
+			l->size = size;
 		}
 
 		l->disks[l->num] = malloc(stringLen + 1 + strlen(ddxml));
+		if (l->disks[l->num] == NULL) {
+			vzctl2_log(-1, ENOMEM, "Not enought memory");
+			return -1;
+		}
 		l->disks[l->num][stringLen + strlen(ddxml)] = '\0';
 		memcpy(l->disks[l->num], stringVal, stringLen);
 		memcpy(l->disks[l->num] + stringLen, ddxml, sizeof(ddxml));
