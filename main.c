@@ -207,10 +207,8 @@ static int scan()
 			vzctl2_log(0, 0, "Inspect %s", d.disks[j]);
 			if (vpses.vpses[vps].type == VPS_CT) {
 				err = ploop_compact(d.disks[j]);
-				if (err) {
-					vps_disk_list_free(&d);
+				if (err)
 					continue;
-				}
 			}
 		}
 		vps_disk_list_free(&d);
