@@ -27,15 +27,18 @@ make
 rm -rf $RPM_BUILD_ROOT
 mkdir -p %buildroot/%{_sbindir}
 mkdir -p %buildroot/etc/vz
+mkdir -p %buildroot/etc/cron.d
 
 install -m 755 pcompact %buildroot/%{_sbindir}/pcompact
 install -m 644 etc/pcompact.conf %buildroot/etc/vz/pcompact.conf
+install -m 644 etc/cron.d/pcompact %buildroot/etc/cron.d/pcompact
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %files
 %attr(755, root, root) %{_sbindir}/pcompact
-%attr(644,root,root) /etc/vz/pcompact.conf
+%config(noreplace) %attr(644,root,root) /etc/vz/pcompact.conf
+%config(noreplace) %attr(644,root,root) /etc/cron.d/pcompact
 
 %changelog
