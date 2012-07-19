@@ -1,5 +1,5 @@
 CFLAGS=-Wall -Wno-pointer-sign -Werror
-LDFLAGS=-lvzctl2 -lyajl
+LDFLAGS=-lvzctl2 -lyajl -lrt
 OBJS = main.o parser.o
 
 all: pcompact

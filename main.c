@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
+#include <string.h>
 #include <sys/file.h>
 #include <sys/types.h>
 
@@ -223,13 +225,53 @@ out:
 
 static void usage(char **argv)
 {
-	vzctl2_log(-1, 0, "Usage: %s [-vns]", argv[0]);
+	vzctl2_log(-1, 0, "Usage: %s [-vns] [-t timeout[smh]]", argv[0]);
+}
+
+static int settimer(const char *opt)
+{
+	timer_t timer;
+	struct itimerspec its = {};
+	char * endptr;
+	int val = strtoul(opt, &endptr, 0);
+
+	if (strlen(endptr) > 1) {
+		vzctl2_log(-1, 0, "Invalid argument - %s", opt);
+		return -1;
+	}
+
+	switch (*endptr)
+	{
+		case 's': case 'S': case 0:
+			break;
+		case 'm': case 'M':
+			val *= 60;
+			break;
+		case 'h': case 'H':
+			val *= 3600; break;
+		default:
+			vzctl2_log(-1, 0, "Invalid argument - %s", opt);
+			return -1;
+	};
+
+	its.it_value.tv_sec = val;
+
+	if (timer_create(CLOCK_MONOTONIC, NULL, &timer) == -1) {
+		vzctl2_log(-1, errno, "Can't set up a timer");
+		return 1;
+	}
+	if (timer_settime(timer, 0, &its, NULL) == -1) {
+		vzctl2_log(-1, errno, "Can't set up a timer");
+		return 1;
+	}
+
+	return 0;
 }
 
 int main(int argc, char **argv)
 {
 	int err, opt;
-	static const char short_opts[] = "nvs";
+	static const char short_opts[] = "nvst:";
 	struct sigaction sa = {
 		.sa_handler     = sigint_handler,
 		.sa_flags	= SA_RESTART,
@@ -257,6 +299,10 @@ int main(int argc, char **argv)
 			case 's':
 				config.oneshot = 1;
 			break;
+			case 't':
+				if (settimer(optarg))
+					return 1;
+			break;
 			default:
 				usage(argv);
 				exit(1);
@@ -272,6 +318,10 @@ int main(int argc, char **argv)
 	sigemptyset(&sa.sa_mask);
 
         if (sigaction(SIGINT, &sa, NULL)) {
+                vzctl2_log(-1, errno, "Can't set signal handler");
+                exit(1);
+        }
+        if (sigaction(SIGALRM, &sa, NULL)) {
                 vzctl2_log(-1, errno, "Can't set signal handler");
                 exit(1);
         }
