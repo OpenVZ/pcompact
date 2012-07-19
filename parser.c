@@ -46,6 +46,13 @@ static int list_yajl_string(void *ctx, const unsigned char * stringVal,
 		}
 	}
 
+	if (!strcmp(key, "status")) {
+		if (!strncmp("running", stringVal, stringLen))
+			l->vpses[l->num].status = VPS_RUNNING;
+		else if (!strncmp("mounted", stringVal, stringLen))
+			l->vpses[l->num].status = VPS_MOUNTED;
+	}
+
 	key[0] = '\0';
 
 	return 1;
@@ -199,7 +206,7 @@ int vps_get_list(struct vps_list *l)
 					.yajl_start_map	= list_yajl_start_map,
 					.yajl_end_map	= list_yajl_end_map,
 				};
-	char *argv[] = {"prlctl", "list", "-j", NULL};
+	char *argv[] = {"prlctl", "list", "-aj", NULL};
 
 	l->num = 0;
 	l->size = 0;

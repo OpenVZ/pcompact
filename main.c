@@ -189,6 +189,8 @@ static int scan()
 
 	for (i = 0; i < vpses.num; i++) {
 		struct vps_disk_list d;
+		int mount = 0, ret;
+		char cmd[128];
 		int j;
 
 		vps = (i + pstate) % vpses.num;
@@ -203,6 +205,16 @@ static int scan()
 		if (err)
 			continue;
 
+		if (vpses.vpses[vps].status == VPS_STOPPED) {
+			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl mount %s",
+							vpses.vpses[vps].uuid);
+			ret = system(cmd);
+			if (ret)
+				vzctl2_log(-1, 0, "%s returned code %d", cmd, ret);
+			else
+				mount = 1;
+		}
+
 		for (j = 0; j < d.num; j++) {
 			vzctl2_log(0, 0, "Inspect %s", d.disks[j]);
 			if (vpses.vpses[vps].type == VPS_CT) {
@@ -212,6 +224,14 @@ static int scan()
 			}
 		}
 		vps_disk_list_free(&d);
+
+		if (mount) {
+			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl umount %s",
+							vpses.vpses[vps].uuid);
+			ret = system(cmd);
+			if (ret)
+				vzctl2_log(-1, 0, "%s returned code %d", cmd, ret);
+		}
 
 		if (config.oneshot)
 			break;

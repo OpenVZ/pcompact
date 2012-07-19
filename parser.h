@@ -6,11 +6,18 @@ enum {
 	VPS_CT,
 };
 
+enum status {
+	VPS_STOPPED = 0,
+	VPS_RUNNING,
+	VPS_MOUNTED,
+};
+
 #define VPS_NANE_SIZE 36
 struct vps {
 	char uuid[VPS_NANE_SIZE];
 	char eof;
 	unsigned type;
+	enum status status;
 };
 
 struct vps_list {
