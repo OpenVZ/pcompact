@@ -217,11 +217,8 @@ static int scan()
 
 		for (j = 0; j < d.num; j++) {
 			vzctl2_log(0, 0, "Inspect %s", d.disks[j]);
-			if (vpses.vpses[vps].type == VPS_CT) {
-				err = ploop_compact(d.disks[j]);
-				if (err)
-					continue;
-			}
+			if (vpses.vpses[vps].type == VPS_CT)
+				ploop_compact(d.disks[j]);
 		}
 		vps_disk_list_free(&d);
 

@@ -206,7 +206,7 @@ int vps_get_list(struct vps_list *l)
 					.yajl_start_map	= list_yajl_start_map,
 					.yajl_end_map	= list_yajl_end_map,
 				};
-	char *argv[] = {"prlctl", "list", "-aj", NULL};
+	char *argv[] = {"prlctl", "list", "-aj", "--vmtype=ct",  NULL};
 
 	l->num = 0;
 	l->size = 0;
