@@ -71,8 +71,15 @@ int ploop_compact(const char *descr)
 		rate = (rate - config.threshhold + config.delta) * pds.ploop_size / 100;
 
 		vzctl2_log(0, 0, "To free %.0fMB", rate / (1 << 20));
-		if (!config.dry)
-			err = ploop_discard(di, 0, rate, &stop);
+		if (!config.dry) {
+			struct ploop_discard_param param = {};
+
+			param.minlen_b = 0;
+			param.to_free = rate;
+			param.stop = &stop;
+
+			err = ploop_discard(di, &param);
+		}
 	}
 
 	ploop_free_diskdescriptor(di);
