@@ -1,0 +1,25 @@
+.TH pcompact 8 "September 2012" "@PRODUCT_NAME_LONG@"
+.SH NAME
+\fBpcompact\fR \- Parallels utility for compacting Container virtual disks
+.SH SYNOPSIS
+\fBpcompact\fR [-v] [-n] [-s] [-t \fItimeout[s|m|h]\fR]
+.SH DESCRIPTION
+Remove unused blocks from Container virtual disks, increasing free disk space on the server.
+.SH OPTIONS
+.TP
+\fB-v\fR
+Increase the command output verbosity. Multiple -v options can be specified to produce a more verbose output.
+.TP
+\fB-n\fR
+Display the actions the command will execute, without actually compacting disks.
+.TP
+\fB-s\fR
+Stop the command execution after compacting the first disk.
+.TP
+\FB-t\fR \fItimeout[s|m|h]\fR
+Terminate the command after the specified \fItimeout\fR in \fIs\fReconds, \fIm\fRinutes or \fIh\fRours.
+.SH SEE ALSO
+.BR pcompact.conf (5)
+.SH COPYRIGHT
+Copyright (c) 2011-@LAST_COPYRIGHT_YEAR@, @COPYRIGHT_OWNER@. All rights reserved. 
+

@@ -1,0 +1,16 @@
+.TH pcompact.conf 5 "September 2012" "@PRODUCT_NAME_LONG@"
+.SH NAME
+Configuration file for the Parallels \fBpcompact\fR utility.
+.SH SYNOPSIS
+/etc/vz/pcompact.conf
+.SH DESCRIPTION
+This configuration file is used by the \fBpcompact\fR utility to compact Container virtual disks.
+.SS Parameters
+.IP \fBTHRESHOLD\fR=\fInumber\fR
+Start compacting a virtual disk if the freed space exceeds the specified value, in percent to the total disk size.
+.IP \fBDELTA\fR=\fInumber\fR
+After compacting, leave the amount of free space on a virtual disk equal to \fBDELTA\fR, in percent to the virtual disk size.
+.SH SEE ALSO
+.BR pcompact (8)
+.SH COPYRIGHT
+Copyright (c) 2011-@LAST_COPYRIGHT_YEAR@, @COPYRIGHT_OWNER@. All rights reserved. 

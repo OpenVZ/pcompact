@@ -68,7 +68,7 @@ int ploop_compact(const char *descr)
 	if (rate > config.threshhold) {
 		vzctl2_log(0, 0, "Start compacting");
 
-		rate = (rate - config.threshhold + config.delta) * pds.ploop_size / 100;
+		rate = (rate - config.delta) * pds.ploop_size / 100;
 
 		vzctl2_log(0, 0, "To free %.0fMB", rate / (1 << 20));
 		if (!config.dry) {
@@ -247,7 +247,15 @@ out:
 
 static void usage(char **argv)
 {
-	vzctl2_log(-1, 0, "Usage: %s [-vns] [-t timeout[smh]]", argv[0]);
+	vzctl2_log(-1, 0, "Usage:\n"
+		   "\t%s [-vns] [-t timeout[smh]]\n\n"
+		   "Options:\n"
+		   "  -v\tincrease verbosity.\n"
+		   "\tCould be used several times to increase verbosity higher\n"
+		   "  -n\tprint the actions that would be executed, but do not execute them\n"
+		   "  -s\tcompact only first not yet compacted disk\n"
+		   "  -t\twork only specified time. Suffixes for seconds, minutes and hours are allowed.",
+		   argv[0]);
 }
 
 static int settimer(const char *opt)
