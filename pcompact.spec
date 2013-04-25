@@ -1,7 +1,7 @@
 Summary: Parallels utilities for Compacting Virtual Disks
 Name: pcompact
 Version: 6.1.0
-Release: 10
+Release: 11
 License: Parallels
 Group:  Application/System
 
