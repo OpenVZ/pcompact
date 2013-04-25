@@ -320,7 +320,6 @@ int main(int argc, char **argv)
 		.sa_flags	= SA_RESTART,
 	};
 
-	ploop_lib_init();
 	vzctl2_lib_init();
 
 	vzctl2_init_log("pcompact");
