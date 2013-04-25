@@ -213,8 +213,10 @@ int vps_get_list(struct vps_list *l)
 	l->vpses = NULL;
 
 	ret = parse_command(argv, &callbacks, l);
-	if (ret)
+	if (ret) {
+		vzctl2_log(-1, 0, "Failed to get Containers list");
 		vps_list_free(l);
+	}
 	return ret;
 }
 
@@ -232,8 +234,11 @@ int vps_get_disks(struct vps *vps, struct vps_disk_list *l)
 	l->disks = NULL;
 
 	ret = parse_command(argv, &callbacks, l);
-	if (ret)
+	if (ret) {
+		vzctl2_log(-1, 0, "Failed to get Container %s disks list",
+				vps->uuid);
 		vps_disk_list_free(l);
+	}
 	return ret;
 }
 
