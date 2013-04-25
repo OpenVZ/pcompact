@@ -222,7 +222,7 @@ static int scan()
 			goto out;
 
 		err = vps_get_disks(vpses.vpses + vps, &d);
-		if (err)
+		if (err || d.disks == NULL)
 			continue;
 
 		if (vpses.vpses[vps].status == VPS_STOPPED) {

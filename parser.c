@@ -10,12 +10,13 @@
 #include "parser.h"
 
 static char key[128];
+static int hdd_section;
 
 static int yajl_map_key(void *ctx, const unsigned char *stringVal,
 							unsigned int stringLen)
 {
 	if (stringLen + 1 > sizeof(key))
-	return 0;
+		return 0;
 
 	key[stringLen] = 0;
 	memcpy(key, stringVal, stringLen);
@@ -86,14 +87,27 @@ static int list_yajl_end_map(void * ctx)
 	return 1;
 }
 
+static int disk_yajl_start_map(void * ctx)
+{
+	if (!strncmp(key, "hdd", 3))
+		hdd_section = 1;
+	return 1;
+}
+
+static int disk_yajl_end_map(void * ctx)
+{
+	hdd_section = 0;
+	return 1;
+}
+
 static int disk_yajl_string(void *ctx, const unsigned char * stringVal,
 							unsigned int stringLen)
 {
 	struct vps_disk_list *l = (struct vps_disk_list *) ctx;
 
 
-	if (!strcmp(key, "Home")) {
-		const char ddxml[] = "/root.hdd/DiskDescriptor.xml";
+	if (!strcmp(key, "image") && hdd_section) {
+		const char ddxml[] = "/DiskDescriptor.xml";
 
 		if (l->size < (l->num + 1) * sizeof(char *)) {
 			int size = l->size + 4096;
@@ -206,7 +220,7 @@ int vps_get_list(struct vps_list *l)
 					.yajl_start_map	= list_yajl_start_map,
 					.yajl_end_map	= list_yajl_end_map,
 				};
-	char *argv[] = {"prlctl", "list", "-aj", "--vmtype=ct",  NULL};
+	char *argv[] = {"prlctl", "list", "-aj", "--vmtype=ct", NULL};
 
 	l->num = 0;
 	l->size = 0;
@@ -226,6 +240,8 @@ int vps_get_disks(struct vps *vps, struct vps_disk_list *l)
 	yajl_callbacks callbacks = {
 					.yajl_map_key	= yajl_map_key,
 					.yajl_string	= disk_yajl_string,
+					.yajl_start_map	= disk_yajl_start_map,
+					.yajl_end_map	= disk_yajl_end_map,
 				};
 	char *argv[] = {"prlctl", "list", "-iHj", vps->uuid, NULL};
 
