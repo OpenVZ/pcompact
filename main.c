@@ -39,6 +39,15 @@ static void sigint_handler(int signo)
 	stop = 1;
 }
 
+static void print_discard_stat(struct ploop_discard_stat *pds)
+{
+	vzctl2_log(0, 0, "ploop=%ldMB image=%ldMB data=%ldMB balloon=%ldMB",
+			pds->ploop_size >> 20,
+			pds->image_size >> 20,
+			pds->data_size >> 20,
+			pds->balloon_size >> 20);
+}
+
 int ploop_compact(const char *descr)
 {
 	int err = 0;
@@ -51,26 +60,27 @@ int ploop_compact(const char *descr)
 		return -1;
 	}
 
+	vzctl2_log(0, 0, "Disk: %s", descr);
 	err = ploop_discard_get_stat(di, &pds);
 	if (err) {
+		vzctl2_log(-1, 0, "Failed to get discard stat: %s",
+				ploop_get_last_error());
 		ploop_free_diskdescriptor(di);
 		return err;
 	}
 
-	vzctl2_log(1, 0, "Disk: %s", descr);
-	vzctl2_log(1, 0, "Data size:    %8ldMB", pds.data_size >> 20);
-	vzctl2_log(1, 0, "Ploop size:   %8ldMB", pds.ploop_size >> 20);
-	vzctl2_log(1, 0, "Image size:   %8ldMB", pds.image_size >> 20);
+	print_discard_stat(&pds);
 
 	rate = ((double) pds.image_size - pds.data_size) / pds.ploop_size * 100;
-	vzctl2_log(0, 0, "Rate: %.1f", rate);
+	vzctl2_log(0, 0, "Rate: %.1f (threshold=%d)",
+			rate, config.threshhold);
 
 	if (rate > config.threshhold) {
-		vzctl2_log(0, 0, "Start compacting");
+		rate = (rate - (config.delta < rate ? config.delta : 0))
+				* pds.ploop_size / 100;
 
-		rate = (rate - config.delta) * pds.ploop_size / 100;
-
-		vzctl2_log(0, 0, "To free %.0fMB", rate / (1 << 20));
+		vzctl2_log(0, 0, "Start compacting (to free %.0fMB)",
+				rate / (1 << 20));
 		if (!config.dry) {
 			struct ploop_discard_param param = {};
 
@@ -79,6 +89,9 @@ int ploop_compact(const char *descr)
 			param.stop = &stop;
 
 			err = ploop_discard(di, &param);
+			if (ploop_discard_get_stat(di, &pds) == 0)
+				print_discard_stat(&pds);
+			vzctl2_log(0, 0, "End compaction");
 		}
 	}
 
