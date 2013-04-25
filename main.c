@@ -91,7 +91,7 @@ int ploop_compact(const char *descr)
 			err = ploop_discard(di, &param);
 			if (ploop_discard_get_stat(di, &pds) == 0)
 				print_discard_stat(&pds);
-			vzctl2_log(0, 0, "End compaction");
+			vzctl2_log(0, 0, "End compacting");
 		}
 	}
 
