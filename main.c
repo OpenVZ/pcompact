@@ -24,12 +24,14 @@ static struct {
 	int log_level;
 	int dry;
 	int oneshot;
+	int quiet;
 } config = {
 		.threshhold	= 20,
 		.delta		= 10,
 		.log_level	= 0,
 		.dry		= 0,
 		.oneshot	= 0,
+		.quiet		= 0,
 };
 
 static int stop = 0;
@@ -226,8 +228,8 @@ static int scan()
 			continue;
 
 		if (vpses.vpses[vps].status == VPS_STOPPED) {
-			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl mount %s",
-							vpses.vpses[vps].uuid);
+			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl mount %s --verbose %d",
+							vpses.vpses[vps].uuid, config.quiet ? -1 : config.log_level);
 			ret = system(cmd);
 			if (ret)
 				vzctl2_log(-1, 0, "%s returned code %d", cmd, ret);
@@ -243,8 +245,8 @@ static int scan()
 		vps_disk_list_free(&d);
 
 		if (mount) {
-			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl umount %s",
-							vpses.vpses[vps].uuid);
+			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl umount %s --verbose %d",
+							vpses.vpses[vps].uuid, config.quiet ? -1 : config.log_level);
 			ret = system(cmd);
 			if (ret)
 				vzctl2_log(-1, 0, "%s returned code %d", cmd, ret);
@@ -261,13 +263,14 @@ out:
 static void usage(char **argv)
 {
 	vzctl2_log(-1, 0, "Usage:\n"
-		   "\t%s [-vns] [-t timeout[smh]]\n\n"
+		   "\t%s [-vnsq] [-t timeout[smh]]\n\n"
 		   "Options:\n"
 		   "  -v\tincrease verbosity.\n"
 		   "\tCould be used several times to increase verbosity higher\n"
 		   "  -n\tprint the actions that would be executed, but do not execute them\n"
 		   "  -s\tcompact only first not yet compacted disk\n"
-		   "  -t\twork only specified time. Suffixes for seconds, minutes and hours are allowed.",
+		   "  -t\twork only specified time. Suffixes for seconds, minutes and hours are allowed\n"
+		   "  -q\tdisable printing of non-error messages to the standard output (console).",
 		   argv[0]);
 }
 
@@ -314,7 +317,7 @@ static int settimer(const char *opt)
 int main(int argc, char **argv)
 {
 	int err, opt;
-	static const char short_opts[] = "nvst:";
+	static const char short_opts[] = "nvst:q";
 	struct sigaction sa = {
 		.sa_handler     = sigint_handler,
 		.sa_flags	= SA_RESTART,
@@ -345,6 +348,9 @@ int main(int argc, char **argv)
 				if (settimer(optarg))
 					return 1;
 			break;
+			case 'q':
+				config.quiet = 1;
+			break;
 			default:
 				usage(argv);
 				exit(1);
@@ -353,7 +359,7 @@ int main(int argc, char **argv)
 
 	vzctl2_set_log_file(COMPACT_LOG_FILE);
 	vzctl2_set_log_enable(1);
-	vzctl2_set_log_quiet(0);
+	vzctl2_set_log_quiet(config.quiet);
 	vzctl2_set_log_level(config.log_level);
 	vzctl2_set_log_verbose(config.log_level);
 
