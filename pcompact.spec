@@ -1,7 +1,7 @@
 Summary: Parallels utilities for Compacting Virtual Disks
 Name: pcompact
 Version: 6.1.0
-Release: 12
+Release: 13
 License: Parallels
 Group:  Application/System
 
@@ -10,6 +10,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Requires: libvzctl >= 6.0.0-7, ploop-lib >= 6.1.0-14
 BuildRequires: libvzctl >= 6.0.0-7, libvzctl-devel >= 6.0.0-7
 BuildRequires: ploop-lib >= 6.1.0-14, ploop-devel >= 6.1.0-14
+BuildRequires: yajl-devel
 
 %description
 This utility cleans up the unused disk space on expanding virtual hard disks
