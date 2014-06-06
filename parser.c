@@ -11,6 +11,7 @@
 
 static char key[128];
 static int hdd_section;
+static int autocompact_disabled;
 
 static int yajl_map_key(void *ctx, const unsigned char *stringVal,
 							unsigned int stringLen)
@@ -89,7 +90,10 @@ static int list_yajl_end_map(void * ctx)
 
 static int disk_yajl_start_map(void * ctx)
 {
-	if (!strncmp(key, "hdd", 3))
+	/* new entry */
+	if (!strncmp(key, "ID", 2))
+		autocompact_disabled = 0;
+	else if (!strncmp(key, "hdd", 3))
 		hdd_section = 1;
 	return 1;
 }
@@ -100,37 +104,51 @@ static int disk_yajl_end_map(void * ctx)
 	return 1;
 }
 
-static int disk_yajl_string(void *ctx, const unsigned char * stringVal,
-							unsigned int stringLen)
+static int add_disk_entry(struct vps_disk_list *l, const char *stringVal,
+		unsigned int stringLen)
 {
-	struct vps_disk_list *l = (struct vps_disk_list *) ctx;
+	const char ddxml[] = "/DiskDescriptor.xml";
 
-
-	if (!strcmp(key, "image") && hdd_section) {
-		const char ddxml[] = "/DiskDescriptor.xml";
-
-		if (l->size < (l->num + 1) * sizeof(char *)) {
-			int size = l->size + 4096;
-			void *p = realloc(l->disks, size);
-			if (p == NULL) {
-				vzctl2_log(-1, ENOMEM, "Not enought memory");
-				return -1;
-			}
-			l->disks = p;
-			l->size = size;
-		}
-
-		l->disks[l->num] = malloc(stringLen + 1 + strlen(ddxml));
-		if (l->disks[l->num] == NULL) {
+	if (l->size < (l->num + 1) * sizeof(char *)) {
+		int size = l->size + 4096;
+		void *p = realloc(l->disks, size);
+		if (p == NULL) {
 			vzctl2_log(-1, ENOMEM, "Not enought memory");
 			return -1;
 		}
-		l->disks[l->num][stringLen + strlen(ddxml)] = '\0';
-		memcpy(l->disks[l->num], stringVal, stringLen);
-		memcpy(l->disks[l->num] + stringLen, ddxml, sizeof(ddxml));
+		l->disks = p;
+		l->size = size;
+	}
 
-		l->num++;
-		return 1;
+	l->disks[l->num] = malloc(stringLen + 1 + strlen(ddxml));
+	if (l->disks[l->num] == NULL) {
+		vzctl2_log(-1, ENOMEM, "Not enought memory");
+		return -1;
+	}
+	l->disks[l->num][stringLen + strlen(ddxml)] = '\0';
+	memcpy(l->disks[l->num], stringVal, stringLen);
+	memcpy(l->disks[l->num] + stringLen, ddxml, sizeof(ddxml));
+
+	l->num++;
+
+	return 1;
+}
+
+static int disk_yajl_string(void *ctx, const unsigned char *stringVal,
+		unsigned int stringLen)
+{
+	struct vps_disk_list *l = (struct vps_disk_list *) ctx;
+
+	if (!strcmp(key, "Autocompact")) {
+		autocompact_disabled = (strncmp(stringVal, "off", stringLen) == 0);
+	} else if (!autocompact_disabled && hdd_section) {
+		if (!strcmp(key, "image")) {
+			return add_disk_entry(l, stringVal, stringLen);
+		} else if (!strcmp(key, "autocompact") && strncmp(stringVal, "off", stringLen)) {
+			/* logic based on strict order 'image,autocompact' */
+			free(l->disks[--l->num]);
+			l->disks[l->num] = NULL;
+		}
 	}
 
 	key[0] = '\0';
