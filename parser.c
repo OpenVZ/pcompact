@@ -144,7 +144,7 @@ static int disk_yajl_string(void *ctx, const unsigned char *stringVal,
 	} else if (!autocompact_disabled && hdd_section) {
 		if (!strcmp(key, "image")) {
 			return add_disk_entry(l, stringVal, stringLen);
-		} else if (!strcmp(key, "autocompact") && strncmp(stringVal, "off", stringLen)) {
+		} else if (!strcmp(key, "autocompact") && !strncmp(stringVal, "off", stringLen)) {
 			/* logic based on strict order 'image,autocompact' */
 			free(l->disks[--l->num]);
 			l->disks[l->num] = NULL;
