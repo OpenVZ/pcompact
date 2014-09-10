@@ -71,6 +71,12 @@ int ploop_compact(const char *descr)
 		return err;
 	}
 
+	if (di->nsnapshots > 1) {
+		vzctl2_log(0, 0, "This ploop image contains snapshots."
+			" Trying to compact the last delta file.");
+		vzctl2_log(0, 0, "For best compacting results, remove snapshots.");
+	}
+
 	print_discard_stat(&pds);
 
 	rate = ((double) pds.image_size - pds.data_size) / pds.ploop_size * 100;
