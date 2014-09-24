@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/file.h>
 #include <sys/types.h>
+#include <sys/time.h>
 
 #include <vzctl/libvzctl.h>
 #include <ploop/libploop.h>
@@ -50,12 +51,34 @@ static void print_discard_stat(struct ploop_discard_stat *pds)
 			pds->balloon_size >> 20);
 }
 
-int ploop_compact(const char *descr)
+static void print_internal_stat(
+	const struct vps *vps,
+	const struct ploop_discard_stat *pds_before,
+	const struct ploop_discard_stat *pds_after,
+	const struct timeval *tv_elapsed )
+{
+	int old_quiet;
+
+	/* write internal stats exclusively to log file */
+	old_quiet = vzctl2_set_log_quiet(1);
+	vzctl2_log(0, 0, "Stats: name=%s ploop_size=%ldMB image_size_before=%ldMB"
+		" image_size_after=%ldMB compaction_time=%ld.%03lds type=%s",
+		vps->name,
+		pds_before->ploop_size >> 20,
+		pds_before->image_size >> 20,
+		pds_after->image_size >> 20,
+		(long)tv_elapsed->tv_sec, (long)tv_elapsed->tv_usec / 1000,
+		(vps->status == VPS_RUNNING ? "online" : "offline"));
+	vzctl2_set_log_quiet(old_quiet);
+}
+
+int ploop_compact(const struct vps *vps, const char *descr)
 {
 	int err = 0;
 	double rate;
-	struct ploop_discard_stat pds;
 	struct ploop_disk_images_data *di = ploop_alloc_diskdescriptor();
+	struct ploop_discard_stat pds, pds_after;
+	struct timeval tv_before, tv_after, tv_delta;
 
 	if (ploop_read_diskdescriptor(descr, di)) {
 		ploop_free_diskdescriptor(di);
@@ -90,15 +113,26 @@ int ploop_compact(const char *descr)
 		vzctl2_log(0, 0, "Start compacting (to free %.0fMB)",
 				rate / (1 << 20));
 		if (!config.dry) {
-			struct ploop_discard_param param = {};
 
+			/* store time before compacting */
+			gettimeofday(&tv_before, NULL);
+
+			/* compact ploop */
+			struct ploop_discard_param param = {};
 			param.minlen_b = 0;
 			param.to_free = rate;
 			param.stop = &stop;
-
 			err = ploop_discard(di, &param);
-			if (ploop_discard_get_stat(di, &pds) == 0)
-				print_discard_stat(&pds);
+
+			/* store time after compacting */
+			gettimeofday(&tv_after, NULL);
+			timersub(&tv_after, &tv_before, &tv_delta);
+
+			if (ploop_discard_get_stat(di, &pds_after) == 0) {
+				print_discard_stat(&pds_after);
+				print_internal_stat(vps, &pds, &pds_after, &tv_delta);
+			}
+
 			vzctl2_log(0, 0, "End compacting");
 		}
 	}
@@ -246,7 +280,7 @@ static int scan()
 		for (j = 0; j < d.num; j++) {
 			vzctl2_log(0, 0, "Inspect %s", d.disks[j]);
 			if (vpses.vpses[vps].type == VPS_CT)
-				ploop_compact(d.disks[j]);
+				ploop_compact(&vpses.vpses[vps], d.disks[j]);
 		}
 		vps_disk_list_free(&d);
 

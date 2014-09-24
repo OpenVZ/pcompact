@@ -12,12 +12,14 @@ enum status {
 	VPS_MOUNTED,
 };
 
-#define VPS_NANE_SIZE 36
+#define VPS_UUID_SIZE 36
+#define VPS_NAME_SIZE 32
 struct vps {
-	char uuid[VPS_NANE_SIZE];
+	char uuid[VPS_UUID_SIZE];
 	char eof;
 	unsigned type;
 	enum status status;
+	char name[VPS_NAME_SIZE];
 };
 
 struct vps_list {
@@ -25,6 +27,7 @@ struct vps_list {
 	int size;
 	int num;
 };
+
 struct vps_disk_list {
 	char **disks;
 	int size;

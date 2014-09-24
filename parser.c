@@ -37,6 +37,14 @@ static int list_yajl_string(void *ctx, const unsigned char * stringVal,
 		return 1;
 	}
 
+	if (!strcmp(key, "name")) {
+		if (stringLen >= sizeof(l->vpses[l->num].name))
+			return 0;
+		memcpy(l->vpses[l->num].name, stringVal, stringLen);
+		l->vpses[l->num].name[stringLen] = '\0';
+		return 1;
+	}
+
 	if (!strcmp(key, "type")) {
 		if (!strncmp("CT", stringVal, stringLen))
 			l->vpses[l->num].type = VPS_CT;
