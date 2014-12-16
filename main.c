@@ -61,9 +61,9 @@ static void print_internal_stat(
 
 	/* write internal stats exclusively to log file */
 	old_quiet = vzctl2_set_log_quiet(1);
-	vzctl2_log(0, 0, "Stats: name=%s ploop_size=%ldMB image_size_before=%ldMB"
+	vzctl2_log(0, 0, "Stats: uuid=%s ploop_size=%ldMB image_size_before=%ldMB"
 		" image_size_after=%ldMB compaction_time=%ld.%03lds type=%s",
-		vps->name,
+		vps->uuid,
 		pds_before->ploop_size >> 20,
 		pds_before->image_size >> 20,
 		pds_after->image_size >> 20,

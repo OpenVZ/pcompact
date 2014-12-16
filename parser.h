@@ -13,13 +13,11 @@ enum status {
 };
 
 #define VPS_UUID_SIZE 36
-#define VPS_NAME_SIZE 32
 struct vps {
 	char uuid[VPS_UUID_SIZE];
 	char eof;
 	unsigned type;
 	enum status status;
-	char name[VPS_NAME_SIZE];
 };
 
 struct vps_list {
