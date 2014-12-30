@@ -9,6 +9,8 @@
 #include <sys/file.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include <vzctl/libvzctl.h>
 #include <ploop/libploop.h>
@@ -26,6 +28,7 @@ static struct {
 	int dry;
 	int oneshot;
 	int quiet;
+	int defrag;
 } config = {
 		.threshhold	= 20,
 		.delta		= 10,
@@ -33,12 +36,16 @@ static struct {
 		.dry		= 0,
 		.oneshot	= 0,
 		.quiet		= 0,
+		.defrag		= 1,
 };
 
 static int stop = 0;
+static int __defrag_pid = -1;
 
 static void sigint_handler(int signo)
 {
+	if (__defrag_pid != -1)
+		kill(__defrag_pid, SIGTERM);
 	stop = 1;
 }
 
@@ -49,6 +56,106 @@ static void print_discard_stat(struct ploop_discard_stat *pds)
 			pds->image_size >> 20,
 			pds->data_size >> 20,
 			pds->balloon_size >> 20);
+}
+
+static int defrag(char *dev, char *mnt, unsigned int block_size)
+{
+	int status;
+	char s[16];
+	int rc = 0;
+	char *arg[] = {
+		"/usr/libexec/e4defrag", "-c", s, dev, mnt, NULL
+	};
+
+	if (access(arg[0], F_OK))
+		return 0;
+
+	snprintf(s, sizeof(s), "%u", block_size);
+
+	__defrag_pid = fork();
+	if (__defrag_pid == -1) {
+		vzctl2_log(-1, errno, "Unable to fork: %m");
+		return -1;
+	} else if (__defrag_pid == 0) {
+		execv(arg[0], arg);
+		exit(1);
+	}
+
+	while (waitpid(__defrag_pid, &status, 0) == -1)
+		if (errno != EINTR) {
+			__defrag_pid = -1;
+			vzctl2_log(-1, errno, "%s error in waitpid(%d)",
+					arg[0], __defrag_pid);
+			return -1;
+		}
+
+	__defrag_pid = -1;
+	if (WIFEXITED(status)) {
+		if (WEXITSTATUS(status)) {
+			vzctl2_log(-1, 0, "%s exited with %d", arg[0], rc);
+			return -1;
+		}
+	} else if (WIFSIGNALED(status)) {
+		vzctl2_log(-1, 0, "%s got signal %d", arg[0], WTERMSIG(status));
+		return -1;
+	}
+
+	return 0;
+}
+
+int ploop_defrag(const char *descr)
+{
+	char dev[64];
+	char mnt[PATH_MAX];
+	int rc;
+	struct ploop_disk_images_data *di;
+	struct ploop_spec spec;
+
+	if (ploop_open_dd(&di, descr)) {
+		vzctl2_log(-1, 0, "ploop_open_dd %s: %s",
+				descr, ploop_get_last_error());
+		return -1;
+	}
+
+	rc = ploop_get_dev(di, dev, sizeof(dev));
+	if (rc) {
+		if (rc == -1)
+			vzctl2_log(-1, 0, "ploop_get_dev %s: %s",
+				descr, ploop_get_last_error());
+		goto err;
+	}
+
+	rc = ploop_get_spec(di, &spec);
+	if (rc) {
+		vzctl2_log(-1, 0, "ploop_get_spec %s: %s",
+				descr, ploop_get_last_error());
+		goto err;
+	}
+
+	rc = ploop_get_mnt_by_dev(dev, mnt, sizeof(mnt));
+	if (rc) {
+		if (rc == -1)
+			vzctl2_log(-1, 0, "ploop_get_mnt_by_dev %s %s: %s",
+				descr, dev, ploop_get_last_error());
+		goto err;
+	}
+
+	rc = ploop_get_partition_by_mnt(mnt, dev, sizeof(dev));
+	if (rc) {
+		if (rc ==  -1)
+			vzctl2_log(-1, 0, "ploop_get_partition_by_mnt %s %s: %s",
+				descr, mnt, ploop_get_last_error());
+		goto err;
+	}
+
+	vzctl2_log(0, 0, "Start defrag %s dev=%s mnt=%s blocksize=%u",
+			descr, dev, mnt, spec.blocksize);
+	rc = defrag(dev, mnt, spec.blocksize << 9);
+err:
+
+	ploop_close_dd(di);
+
+	return rc;
 }
 
 static void print_internal_stat(
@@ -76,14 +183,12 @@ int ploop_compact(const struct vps *vps, const char *descr)
 {
 	int err = 0;
 	double rate;
-	struct ploop_disk_images_data *di = ploop_alloc_diskdescriptor();
+	struct ploop_disk_images_data *di;
 	struct ploop_discard_stat pds, pds_after;
 	struct timeval tv_before, tv_after, tv_delta;
 
-	if (ploop_read_diskdescriptor(descr, di)) {
-		ploop_free_diskdescriptor(di);
+	if (ploop_open_dd(&di, descr))
 		return -1;
-	}
 
 	vzctl2_log(0, 0, "Disk: %s", descr);
 	err = ploop_discard_get_stat(di, &pds);
@@ -150,19 +255,22 @@ static int parse_config()
 	conf = vzctl2_conf_open(COMPACT_CONF, 0, &err);
 	if (err)
 		return -1;
+
 	res = NULL;
-	err = vzctl2_conf_get_param(conf, "THRESHOLD", &res);
-	if (err)
-		goto err;
+	vzctl2_conf_get_param(conf, "THRESHOLD", &res);
 	if (res)
 		config.threshhold = atoi(res);
+
 	res = NULL;
-	err = vzctl2_conf_get_param(conf, "DELTA", &res);
-	if (err)
-		goto err;
+	vzctl2_conf_get_param(conf, "DELTA", &res);
 	if (res)
 		config.delta = atoi(res);
-err:
+
+	res = NULL;
+	vzctl2_conf_get_param(conf, "DEFRAG", &res);
+	if (res)
+		config.defrag = (strcmp(res, "yes") == 0);
+
 	vzctl2_conf_close(conf);
 
 	return err;
@@ -279,9 +387,15 @@ static int scan()
 
 		for (j = 0; j < d.num; j++) {
 			vzctl2_log(0, 0, "Inspect %s", d.disks[j]);
-			if (vpses.vpses[vps].type == VPS_CT)
-				ploop_compact(&vpses.vpses[vps], d.disks[j]);
+			if (vpses.vpses[vps].type != VPS_CT)
+				continue;
+
+			if (config.defrag)
+				ploop_defrag(d.disks[j]);
+
+			ploop_compact(&vpses.vpses[vps], d.disks[j]);
 		}
+
 		vps_disk_list_free(&d);
 
 		if (mount) {
