@@ -14,7 +14,7 @@ static int hdd_section;
 static int autocompact_disabled;
 
 static int yajl_map_key(void *ctx, const unsigned char *stringVal,
-							unsigned int stringLen)
+							size_t stringLen)
 {
 	if (stringLen + 1 > sizeof(key))
 		return 0;
@@ -26,7 +26,7 @@ static int yajl_map_key(void *ctx, const unsigned char *stringVal,
 }
 
 static int list_yajl_string(void *ctx, const unsigned char * stringVal,
-							unsigned int stringLen)
+							size_t stringLen)
 {
 	struct vps_list *l = (struct vps_list *) ctx;
 
@@ -43,7 +43,7 @@ static int list_yajl_string(void *ctx, const unsigned char * stringVal,
 		else if (!strncmp("VM", stringVal, stringLen))
 			l->vpses[l->num].type = VPS_VM;
 		else {
-			vzctl2_log(-1, 0, "Unknow type: %.*s", stringLen, stringVal);
+			vzctl2_log(-1, 0, "Unknown type: %.*s", (int)stringLen, stringVal);
 			return -1;
 		}
 	}
@@ -135,7 +135,7 @@ static int add_disk_entry(struct vps_disk_list *l, const char *stringVal,
 }
 
 static int disk_yajl_string(void *ctx, const unsigned char *stringVal,
-		unsigned int stringLen)
+		size_t stringLen)
 {
 	struct vps_disk_list *l = (struct vps_disk_list *) ctx;
 
@@ -165,7 +165,7 @@ static int parse_command(char *const argv[], yajl_callbacks *callbacks, void *ct
 	yajl_handle hand;
 	yajl_status stat;
 
-	hand = yajl_alloc(callbacks, NULL, NULL, ctx);
+	hand = yajl_alloc(callbacks, NULL, ctx);
 	if (hand == NULL) {
 		vzctl2_log(-1, ENOMEM, "Not enough memory");
 		return -1;
@@ -197,12 +197,12 @@ static int parse_command(char *const argv[], yajl_callbacks *callbacks, void *ct
 			break;
 
 		stat = yajl_parse(hand, buf, size);
-		if (stat != yajl_status_ok && stat != yajl_status_insufficient_data)
+		if (stat != yajl_status_ok)
 			break;
 	}
 
 	if (stat == yajl_status_ok)
-		stat = yajl_parse_complete(hand);
+		stat = yajl_complete_parse(hand);
 
 	if (stat != yajl_status_ok) {
 		unsigned char * str = yajl_get_error(hand, 0, buf, size);
