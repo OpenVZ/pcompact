@@ -210,6 +210,9 @@ int ploop_compact(const struct vps *vps, const char *descr)
 	rate = ((double) pds.image_size - pds.data_size) / pds.ploop_size * 100;
 	vzctl2_log(0, 0, "Rate: %.1f (threshold=%d)",
 			rate, config.threshhold);
+	/* Image size can be less than data size. to avoid negative rate */
+	if (rate < 0)
+		rate = 0;
 
 	if (rate > config.threshhold) {
 		rate = (rate - (config.delta < rate ? config.delta : 0))
