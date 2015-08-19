@@ -7,9 +7,9 @@ Configuration file for the Parallels \fBpcompact\fR utility.
 This configuration file is used by the \fBpcompact\fR utility to compact Container virtual disks.
 .SS Parameters
 .IP \fBTHRESHOLD\fR=\fInumber\fR
-Start compacting a virtual disk if the freed space exceeds the specified value, in percent to the total disk size.
+Compact the virtual disk if unused space on it exceeds \fBTHRESHOLD\fR percent of the ploop size.
 .IP \fBDELTA\fR=\fInumber\fR
-After compacting, leave the amount of free space on a virtual disk equal to \fBDELTA\fR, in percent to the virtual disk size.
+Reduce disk space to be compacted by \fBDELTA\fR percent of the ploop size.
 .IP \fBDEFRAG\fR=\fIyes|no\fR
 Perform or skip file system defragmentation.
 .SH SEE ALSO
