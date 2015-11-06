@@ -195,7 +195,7 @@ int ploop_compact(const struct vps *vps, const char *descr)
 	if (err) {
 		vzctl2_log(-1, 0, "Failed to get discard stat: %s",
 				ploop_get_last_error());
-		ploop_free_diskdescriptor(di);
+		ploop_close_dd(di);
 		return err;
 	}
 
@@ -245,7 +245,7 @@ int ploop_compact(const struct vps *vps, const char *descr)
 		}
 	}
 
-	ploop_free_diskdescriptor(di);
+	ploop_close_dd(di);
 	return err;
 }
 
