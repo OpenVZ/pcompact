@@ -64,7 +64,7 @@ static int defrag(char *dev, char *mnt, unsigned int block_size)
 	char s[16];
 	int rc = 0;
 	char *arg[] = {
-		"/usr/libexec/e4defrag", "-c", s, dev, mnt, NULL
+		"/usr/sbin/e4defrag2", "-c", s, dev, mnt, NULL
 	};
 
 	if (access(arg[0], F_OK))
