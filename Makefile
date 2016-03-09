@@ -3,7 +3,7 @@ SBINDIR ?= /usr/sbin
 SYSCONFDIR ?= /etc
 
 CFLAGS=-Wall -Wno-pointer-sign -Werror
-LDFLAGS=-lvzctl2 -lploop -lyajl -lrt
+LDFLAGS+=-lvzctl2 -lploop -lyajl -lrt
 OBJS = main.o parser.o
 
 all: pcompact
