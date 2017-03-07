@@ -1,3 +1,5 @@
+include Makefile.incl
+
 PCOMPACT = pcompact
 MANDIR ?= /usr/share/man
 SBINDIR ?= /usr/sbin
@@ -8,6 +10,10 @@ DOCDIR ?= /usr/share/doc/$(PCOMPACT)-$(VERSION)
 CFLAGS=-Wall -Wno-pointer-sign -Werror
 LDFLAGS+=-lvzctl2 -lploop -lyajl -lrt
 OBJS = main.o parser.o
+
+define do_rebrand
+	sed -e "s,@PRODUCT_NAME_SHORT@,$(PRODUCT_NAME_SHORT),g" -i $(1) || exit 1;
+endef
 
 all: $(PCOMPACT)
 
@@ -27,7 +33,9 @@ install: $(PCOMPACT)
 	done
 	install -m 755 $(PCOMPACT) $(DESTDIR)$(SBINDIR)/$(PCOMPACT)
 	install -m 644 $(PCOMPACT).conf.5 $(DESTDIR)$(MANDIR)/man5/$(PCOMPACT).conf.5
+	$(call do_rebrand,$(DESTDIR)$(MANDIR)/man5/$(PCOMPACT).conf.5)
 	install -m 644 $(PCOMPACT).8 $(DESTDIR)$(MANDIR)/man8/$(PCOMPACT).8
+	$(call do_rebrand,$(DESTDIR)$(MANDIR)/man8/$(PCOMPACT).8)
 	install -m 644 etc/cron.d/$(PCOMPACT) $(DESTDIR)$(SYSCONFDIR)/cron.d/$(PCOMPACT)
 	install -m 644 etc/$(PCOMPACT).conf $(DESTDIR)$(SYSCONFDIR)/vz/$(PCOMPACT).conf
 
