@@ -8,7 +8,7 @@ VERSION=$(shell cat Makefile.version)
 DOCDIR ?= /usr/share/doc/$(PCOMPACT)-$(VERSION)
 
 CFLAGS=-Wall -Wno-pointer-sign -Werror
-LDFLAGS+=-lvzctl2 -lploop -lyajl -lrt
+LDFLAGS+=-lvzctl2 -lploop -lyajl -lrt -luuid
 OBJS = main.o parser.o
 
 define do_rebrand
