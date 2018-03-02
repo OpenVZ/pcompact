@@ -33,6 +33,8 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <syslog.h>
+#include <uuid/uuid.h>
 
 #include <vzctl/libvzctl.h>
 #include <ploop/libploop.h>
@@ -98,13 +100,60 @@ static void print_internal_stat(
 	vzctl2_set_log_quiet(old_quiet);
 }
 
-int ploop_compact(const struct vps *vps, const char *descr)
+static void log_start(const char *uuid, const char *task_id, struct ploop_discard_stat *pds, int disk_id, double rate)
 {
-	int err = 0;
+	char out[1024];
+
+	sprintf(out, "{\"operation\":\"pcompactStart\", \"uuid\":\"%s\", "
+		"\"disk_id\":%d, \"task_id\":\"%s\", \"ploop_size\":%lu, \"image_size\":%lu, "
+		"\"data_size\":%lu, \"balloon_size\":%lu, \"rate\":%.1f, "
+		"\"config_dry\":%d, \"config_threhshold\":%d}",
+		uuid, disk_id, task_id, pds->ploop_size >> 20, pds->image_size >> 20,
+		pds->data_size >> 20, pds->balloon_size >> 20, rate, config.dry,
+		config.threshhold);
+
+	syslog(LOG_INFO, out);
+}
+
+static void log_finish(const char *uuid, const char *task_id, const struct ploop_discard_stat *pds,
+	const struct ploop_discard_stat *pds_after, int disk_id, const struct timeval *tv_elapsed, int code)
+{
+	char out[1024];
+
+	sprintf(out, "{\"operation\":\"pcompactFinish\", \"uuid\":\"%s\", "
+		"\"disk_id\":%d, \"task_id\":\"%s\", \"was_compacted\":1, \"ploop_size\":%lu, "
+		"\"stats_before\": {\"image_size\":%lu, \"data_size\":%lu, \"balloon_size\":%lu}, "
+		"\"stats_after\": {\"image_size\":%lu, \"data_size\":%lu, \"balloon_size\":%lu},"
+		"\"time_spent\":\"%ld.%03lds\", \"result\":%d}",
+
+		uuid, disk_id, task_id, pds->ploop_size >> 20, pds->image_size >> 20,
+		pds->data_size >> 20, pds->balloon_size >> 20,
+		pds_after->image_size >> 20, pds_after->data_size >> 20,
+		pds_after->balloon_size >> 20, (long)tv_elapsed->tv_sec,
+		(long)tv_elapsed->tv_usec / 1000, code);
+
+	syslog(LOG_INFO, out);
+}
+
+static void log_cancel(const char *uuid, const char *task_id, int disk_id)
+{
+	char out[1024];
+
+	sprintf(out, "{\"operation\":\"pcompactFinish\", \"uuid\":\"%s\", "
+		"\"disk_id\":%d, \"task_id\":\"%s\", \"was_compacted\":0}",
+		uuid, disk_id, task_id);
+	syslog(LOG_INFO, out);
+}
+
+int ploop_compact(const struct vps *vps, const char *descr, int disk_id)
+{
+	int err = 0, was_compacted = 0;
 	double rate;
+	char task_id[39] = "";
 	struct ploop_disk_images_data *di;
 	struct ploop_discard_stat pds, pds_after;
 	struct timeval tv_before, tv_after, tv_delta;
+	uuid_t u;
 
 	if (ploop_open_dd(&di, descr))
 		return -1;
@@ -130,6 +179,11 @@ int ploop_compact(const struct vps *vps, const char *descr)
 	vzctl2_log(0, 0, "Rate: %.1f (threshold=%d)",
 			rate, config.threshhold);
 
+	uuid_generate(u);
+	uuid_unparse(u, task_id);
+
+	log_start(vps->uuid, task_id, &pds, disk_id, rate);
+
 	/* Image size can be less than data size. to avoid negative rate */
 	if (rate < 0)
 		rate = 0;
@@ -140,6 +194,8 @@ int ploop_compact(const struct vps *vps, const char *descr)
 		vzctl2_log(0, 0, "Start compacting (to free %.0fMB)",
 				rate / (1 << 20));
 		if (!config.dry) {
+
+			was_compacted = 1;
 
 			/* store time before compacting */
 			gettimeofday(&tv_before, NULL);
@@ -165,6 +221,11 @@ int ploop_compact(const struct vps *vps, const char *descr)
 			vzctl2_log(0, 0, "End compacting");
 		}
 	}
+
+	if (was_compacted)
+		log_finish(vps->uuid, task_id, &pds, &pds_after, disk_id, &tv_delta, err);
+	else
+		log_cancel(vps->uuid, task_id, disk_id);
 
 	ploop_close_dd(di);
 	return err;
@@ -281,6 +342,8 @@ static int scan()
 	else
 		pstate++; /* start from the next one */
 
+	openlog("pcompact", LOG_PID, LOG_INFO | LOG_USER);
+
 	for (i = 0; i < vpses.num; i++) {
 		struct vps_disk_list d;
 		int mount = 0, ret;
@@ -314,7 +377,7 @@ static int scan()
 			if (vpses.vpses[vps].type != VPS_CT)
 				continue;
 
-			ploop_compact(&vpses.vpses[vps], d.disks[j]);
+			ploop_compact(&vpses.vpses[vps], d.disks[j], j);
 		}
 
 		vps_disk_list_free(&d);
@@ -331,6 +394,7 @@ static int scan()
 			break;
 	}
 out:
+	closelog();
 	vps_list_free(&vpses);
 	return 0;
 }
