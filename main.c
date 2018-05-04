@@ -35,7 +35,10 @@
 #include <sys/wait.h>
 #include <syslog.h>
 #include <uuid/uuid.h>
+#include <pthread.h>
+#include <sys/stat.h>
 
+#include <vz/vzevent.h>
 #include <vzctl/libvzctl.h>
 #include <ploop/libploop.h>
 
@@ -64,10 +67,49 @@ static struct {
 };
 
 static int stop = 0;
+static int keep_running = 1;
+static dev_t compact_dev;
 
 static void sigint_handler(int signo)
 {
 	stop = 1;
+	keep_running = 0;
+}
+
+static void *vzevent_monitor(void *arg)
+{
+	struct vzctl_state_evt *s;
+	int n;
+	vzevt_handle_t *evt = (vzevt_handle_t *) arg;
+	int fd = evt->sock;
+
+	while (keep_running) {
+		vzevt_t *e = NULL;
+		fd_set rfds;
+
+		FD_ZERO(&rfds);
+		FD_SET(fd, &rfds);
+
+		n = select(fd + 1, &rfds, NULL, NULL, NULL);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			vzctl2_log(-1, errno, "vzevent_monitor: select(): %m");
+			break;
+		}
+
+		if (FD_ISSET(fd, &rfds) && vzevt_recv(evt, &e) == 1) {
+			s = (struct vzctl_state_evt *) e->buffer;
+			if (e->type == VZEVENT_VZCTL_EVENT_TYPE &&
+					s->state == VZCTL_ENV_UMOUNT &&
+					compact_dev == s->dev) {
+				vzctl2_log(0, 0, "Cancel compacting %s", s->ctid);
+				stop = 1;
+			}
+			vzevt_free(e);
+		}
+	}
+	return NULL;
 }
 
 static void print_discard_stat(struct ploop_discard_stat *pds)
@@ -150,15 +192,26 @@ int ploop_compact(const struct vps *vps, const char *descr, int disk_id)
 	int err = 0, was_compacted = 0;
 	double rate;
 	char task_id[39] = "";
+	char dev[64], part[64];
 	struct ploop_disk_images_data *di;
 	struct ploop_discard_stat pds, pds_after;
 	struct timeval tv_before, tv_after, tv_delta;
+	struct stat st;
 	uuid_t u;
 
 	if (ploop_open_dd(&di, descr))
 		return -1;
 
-	vzctl2_log(0, 0, "Disk: %s", descr);
+	if (ploop_get_dev(di, dev, sizeof(dev)) ||
+			ploop_get_part(di, dev, part, sizeof(part))) {
+		ploop_close_dd(di);
+		return -1;
+	}
+
+	stop = 0;
+	if (stat(part, &st) == 0)
+		compact_dev = st.st_rdev;
+
 	err = ploop_discard_get_stat(di, &pds);
 	if (err) {
 		vzctl2_log(-1, 0, "Failed to get discard stat: %s",
@@ -228,6 +281,7 @@ int ploop_compact(const struct vps *vps, const char *descr, int disk_id)
 		log_cancel(vps->uuid, task_id, disk_id);
 
 	ploop_close_dd(di);
+	compact_dev = 0;
 	return err;
 }
 
@@ -504,17 +558,32 @@ int main(int argc, char **argv)
 
 	sigemptyset(&sa.sa_mask);
 
-        if (sigaction(SIGINT, &sa, NULL)) {
+        if (sigaction(SIGINT, &sa, NULL) ||
+        		sigaction(SIGALRM, &sa, NULL) ||
+        		sigaction(SIGTERM, &sa, NULL)) {
                 vzctl2_log(-1, errno, "Can't set signal handler");
                 exit(1);
         }
-        if (sigaction(SIGALRM, &sa, NULL)) {
-                vzctl2_log(-1, errno, "Can't set signal handler");
-                exit(1);
+
+        vzevt_handle_t *evt;
+        pthread_t evt_th;
+
+        if (vzevt_register(&evt)) {
+                syslog(LOG_ERR, "Unable to register vzevent handler");
+                return 1;
+        }
+
+        if (pthread_create(&evt_th, NULL, vzevent_monitor, evt)) {
+                syslog( LOG_ERR, "pthread_create: %m");
+                return 1;
         }
 
 	scan();
 
+	keep_running = 0;
+	pthread_kill(evt_th, SIGTERM);
+	pthread_join(evt_th, NULL);
+	vzevt_unregister(evt);
 	vzctl2_lib_close();
 
 	return 0;
