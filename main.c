@@ -457,14 +457,15 @@ out:
 static void usage(char **argv)
 {
 	vzctl2_log(-1, 0, "Usage:\n"
-		   "\t%s [-vnsq] [-t timeout[smh]]\n\n"
+		   "\t%s [-vnsq] [-t timeout[smh]] [-D]\n\n"
 		   "Options:\n"
 		   "  -v\tincrease verbosity.\n"
 		   "\tCould be used several times to increase verbosity higher\n"
 		   "  -n\tprint the actions that would be executed, but do not execute them\n"
 		   "  -s\tcompact only first not yet compacted disk\n"
 		   "  -t\twork only specified time. Suffixes for seconds, minutes and hours are allowed\n"
-		   "  -q\tdisable printing of non-error messages to the standard output (console).",
+		   "  -q\tdisable printing of non-error messages to the standard output (console).\n"
+		   "  -D\tdefragment file system only.\n",
 		   argv[0]);
 }
 
@@ -511,7 +512,6 @@ static int settimer(const char *opt)
 int main(int argc, char **argv)
 {
 	int err, opt;
-	static const char short_opts[] = "nvst:q";
 	struct sigaction sa = {
 		.sa_handler     = sigint_handler,
 		.sa_flags	= SA_RESTART,
@@ -527,7 +527,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	while ((opt = getopt(argc, argv, short_opts)) != -1) {
+	while ((opt = getopt(argc, argv, "nvst:qD")) != -1) {
 		switch (opt) {
 			case 'v':
 				config.log_level++;
@@ -544,6 +544,9 @@ int main(int argc, char **argv)
 			break;
 			case 'q':
 				config.quiet = 1;
+			break;
+			case 'D':
+				config.defrag = 2;
 			break;
 			default:
 				usage(argv);
