@@ -2,7 +2,7 @@
 .SH NAME
 \fBpcompact\fR \- utility for compacting Container virtual disks
 .SH SYNOPSIS
-\fBpcompact\fR [-v] [-n] [-s] [-t \fItimeout[s|m|h]\fR]
+\fBpcompact\fR [-v] [-n] [-s] [-t \fItimeout[s|m|h]\fR] [-DfR]
 .SH DESCRIPTION
 Remove unused blocks from Container virtual disks, increasing free disk space on the server.
 .SH OPTIONS
@@ -21,6 +21,9 @@ Stop the command execution after compacting the first disk.
 .TP
 \FB-t\fR \fItimeout[s|m|h]\fR
 Terminate the command after the specified \fItimeout\fR in \fIs\fReconds, \fIm\fRinutes or \fIh\fRours.
+.TP
+\FB-D\fR
+Defragment file system only.
 .SH SEE ALSO
 .BR pcompact.conf (5)
 .SH COPYRIGHT
