@@ -258,6 +258,7 @@ int ploop_compact(const struct vps *vps, const char *descr, int disk_id)
 			struct ploop_discard_param param = {
 				.minlen_b = 0,
 				.to_free = rate,
+				.automount = 1,
 				.stop = &stop,
 				.defrag = !!config.defrag,
 			};
