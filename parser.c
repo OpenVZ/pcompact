@@ -34,6 +34,7 @@
 
 static char key[128];
 static int hdd_section;
+static int skip_disk;
 static int autocompact_disabled;
 
 static int yajl_map_key(void *ctx, const unsigned char *stringVal,
@@ -116,13 +117,23 @@ static int disk_yajl_start_map(void * ctx)
 	/* new entry */
 	if (!strncmp(key, "ID", 2))
 		autocompact_disabled = 0;
-	else if (!strncmp(key, "hdd", 3))
+	else if (!strncmp(key, "hdd", 3)) {
 		hdd_section = 1;
+		skip_disk = 0;
+	}
 	return 1;
 }
 
 static int disk_yajl_end_map(void * ctx)
 {
+	if (skip_disk) {
+		struct vps_disk_list *l = (struct vps_disk_list *) ctx;
+
+		free(l->disks[--l->num]);
+		l->disks[l->num] = NULL;
+		skip_disk = 0;
+	}
+
 	hdd_section = 0;
 	return 1;
 }
@@ -167,10 +178,10 @@ static int disk_yajl_string(void *ctx, const unsigned char *stringVal,
 	} else if (!autocompact_disabled && hdd_section) {
 		if (!strcmp(key, "image")) {
 			return add_disk_entry(l, stringVal, stringLen);
+		} else if (!strcmp(key, "backup")) {
+			skip_disk = 1;
 		} else if (!strcmp(key, "autocompact") && !strncmp(stringVal, "off", stringLen)) {
-			/* logic based on strict order 'image,autocompact' */
-			free(l->disks[--l->num]);
-			l->disks[l->num] = NULL;
+			skip_disk = 1;
 		}
 	}
 
