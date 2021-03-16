@@ -188,9 +188,46 @@ static void log_cancel(const char *uuid, const char *task_id, int disk_id)
 	syslog(LOG_INFO, out);
 }
 
+int do_maintenance_compact(struct ploop_disk_images_data *di, double rate,
+		struct ploop_discard_stat *pds)
+{
+	if (rate < config.threshhold)
+		return 1;
+
+	rate = (rate - (config.delta < rate ? config.delta : 0))
+		* pds->ploop_size / 100;
+	vzctl2_log(0, 0, "Start compacting (to free %.0fMB)",
+			rate / (1 << 20));
+	if (config.dry)
+		return 1;
+
+	struct ploop_discard_param param = {
+		.minlen_b = 0,
+		.to_free = rate,
+		.automount = 1,
+		.stop = &stop,
+		.defrag = config.defrag,
+	};
+
+	return ploop_discard(di, &param);
+}
+
+int do_compact(struct ploop_disk_images_data *di,
+		struct ploop_discard_stat *pds)
+{
+	struct ploop_discard_param param = {
+		.automount = 1,
+		.stop = &stop,
+		.defrag = config.defrag,
+	};
+
+	vzctl2_log(0, 0, "Start compacting");
+	return ploop_discard(di, &param);
+}
+
 int ploop_compact(const struct vps *vps, const char *descr, int disk_id)
 {
-	int err = 0, was_compacted = 0;
+	int err = 0;
 	double rate;
 	char task_id[39] = "";
 	char dev[64], part[64];
@@ -230,6 +267,10 @@ int ploop_compact(const struct vps *vps, const char *descr, int disk_id)
 	print_discard_stat(&pds);
 
 	rate = ((double) pds.image_size - pds.data_size) / pds.ploop_size * 100;
+	/* Image size can be less than data size. to avoid negative rate */
+	if (rate < 0)
+		rate = 0;
+
 	vzctl2_log(0, 0, "Rate: %.1f (threshold=%d)",
 			rate, config.threshhold);
 
@@ -238,48 +279,27 @@ int ploop_compact(const struct vps *vps, const char *descr, int disk_id)
 
 	log_start(vps->uuid, task_id, &pds, disk_id, rate);
 
-	/* Image size can be less than data size. to avoid negative rate */
-	if (rate < 0)
-		rate = 0;
+	/* store time before compacting */
+	gettimeofday(&tv_before, NULL);
 
-	if (rate > config.threshhold) {
-		rate = (rate - (config.delta < rate ? config.delta : 0))
-				* pds.ploop_size / 100;
-		vzctl2_log(0, 0, "Start compacting (to free %.0fMB)",
-				rate / (1 << 20));
-		if (!config.dry) {
-
-			was_compacted = 1;
-
-			/* store time before compacting */
-			gettimeofday(&tv_before, NULL);
-
-			/* compact ploop */
-			struct ploop_discard_param param = {
-				.minlen_b = 0,
-				.to_free = rate,
-				.automount = 1,
-				.stop = &stop,
-				.defrag = !!config.defrag,
-			};
-			err = ploop_discard(di, &param);
-
-			/* store time after compacting */
-			gettimeofday(&tv_after, NULL);
-			timersub(&tv_after, &tv_before, &tv_delta);
-
-			if (ploop_discard_get_stat(di, &pds_after) == 0) {
-				print_discard_stat(&pds_after);
-				print_internal_stat(vps, &pds, &pds_after, &tv_delta);
-			}
-
-			vzctl2_log(0, 0, "End compacting");
-		}
-	}
-
-	if (was_compacted)
-		log_finish(vps->uuid, task_id, &pds, &pds_after, disk_id, &tv_delta, err);
+	if (pds.native_discard)
+		err = do_compact(di, &pds);
 	else
+		err = do_maintenance_compact(di, rate, &pds);
+
+	if (err == 0) {
+		/* store time after compacting */
+		gettimeofday(&tv_after, NULL);
+		timersub(&tv_after, &tv_before, &tv_delta);
+
+		if (ploop_discard_get_stat(di, &pds_after) == 0) {
+			print_discard_stat(&pds_after);
+			print_internal_stat(vps, &pds, &pds_after, &tv_delta);
+		}
+
+		log_finish(vps->uuid, task_id, &pds, &pds_after, disk_id, &tv_delta, err);
+		vzctl2_log(0, 0, "End compacting");
+	} else
 		log_cancel(vps->uuid, task_id, disk_id);
 
 	ploop_close_dd(di);
