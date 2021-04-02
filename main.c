@@ -51,6 +51,7 @@
 
 static struct {
 	int threshhold;
+	int image_defrag_threshold;
 	int delta; /* how many data should be freed */
 	int log_level;
 	int dry;
@@ -59,6 +60,7 @@ static struct {
 	int defrag;
 } config = {
 		.threshhold	= 20,
+		.image_defrag_threshold	= 10,
 		.delta		= 10,
 		.log_level	= 0,
 		.dry		= 0,
@@ -219,6 +221,7 @@ int do_compact(struct ploop_disk_images_data *di,
 		.automount = 1,
 		.stop = &stop,
 		.defrag = config.defrag,
+		.image_defrag_threshold = config.image_defrag_threshold,
 	};
 
 	vzctl2_log(0, 0, "Start compacting");
@@ -321,6 +324,10 @@ static int parse_config()
 	vzctl2_conf_get_param(conf, "THRESHOLD", &res);
 	if (res)
 		config.threshhold = atoi(res);
+	res = NULL;
+	vzctl2_conf_get_param(conf, "IMAGE_DEFRAG_THRESHOLD", &res);
+	if (res)
+		config.image_defrag_threshold = atoi(res);
 
 	res = NULL;
 	vzctl2_conf_get_param(conf, "DELTA", &res);
