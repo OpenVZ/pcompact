@@ -157,7 +157,7 @@ static void log_start(const char *uuid, const char *task_id, struct ploop_discar
 		pds->data_size >> 20, pds->balloon_size >> 20, rate, config.dry,
 		config.threshhold);
 
-	syslog(LOG_INFO, out);
+	syslog(LOG_INFO, "%s", out);
 }
 
 static void log_finish(const char *uuid, const char *task_id, const struct ploop_discard_stat *pds,
@@ -177,7 +177,7 @@ static void log_finish(const char *uuid, const char *task_id, const struct ploop
 		pds_after->balloon_size >> 20, (long)tv_elapsed->tv_sec,
 		(long)tv_elapsed->tv_usec / 1000, code);
 
-	syslog(LOG_INFO, out);
+	syslog(LOG_INFO, "%s", out);
 }
 
 static void log_cancel(const char *uuid, const char *task_id, int disk_id)
@@ -187,7 +187,7 @@ static void log_cancel(const char *uuid, const char *task_id, int disk_id)
 	sprintf(out, "{\"operation\":\"pcompactFinish\", \"uuid\":\"%s\", "
 		"\"disk_id\":%d, \"task_id\":\"%s\", \"was_compacted\":0}",
 		uuid, disk_id, task_id);
-	syslog(LOG_INFO, out);
+	syslog(LOG_INFO, "%s", out);
 }
 
 int do_maintenance_compact(struct ploop_disk_images_data *di, double rate,
