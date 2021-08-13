@@ -69,8 +69,8 @@ static struct {
 		.defrag		= 1,
 };
 
-static int stop = 0;
-static int keep_running = 1;
+static volatile int stop = 0;
+static volatile int keep_running = 1;
 static dev_t compact_dev;
 
 static void sigint_handler(int signo)
@@ -207,7 +207,7 @@ int do_maintenance_compact(struct ploop_disk_images_data *di, double rate,
 		.minlen_b = 0,
 		.to_free = rate,
 		.automount = 1,
-		.stop = &stop,
+		.stop = (int *)&stop,
 		.defrag = config.defrag,
 	};
 
@@ -219,7 +219,7 @@ int do_compact(struct ploop_disk_images_data *di,
 {
 	struct ploop_discard_param param = {
 		.automount = 1,
-		.stop = &stop,
+		.stop = (int *)&stop,
 		.defrag = config.defrag,
 		.image_defrag_threshold = config.image_defrag_threshold,
 	};
@@ -427,7 +427,7 @@ static int scan()
 
 	openlog("pcompact", LOG_PID, LOG_INFO | LOG_USER);
 
-	for (i = 0; i < vpses.num; i++) {
+	for (i = 0; i < vpses.num && keep_running; i++) {
 		struct vps_disk_list d;
 		int mount = 0, ret;
 		char cmd[128];
@@ -455,7 +455,7 @@ static int scan()
 				mount = 1;
 		}
 
-		for (j = 0; j < d.num; j++) {
+		for (j = 0; j < d.num && keep_running; j++) {
 			vzctl2_log(0, 0, "Inspect %s", d.disks[j]);
 			if (vpses.vpses[vps].type != VPS_CT)
 				continue;
