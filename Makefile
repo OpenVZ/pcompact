@@ -18,10 +18,10 @@ endef
 all: $(PCOMPACT)
 
 $(PCOMPACT): ${OBJS}
-	$(CC) $(LDFLAGS) $^ -o $@
+	$(CC) $^ $(LDFLAGS) -o $@
 
 parser: parser.c
-	$(CC) $(LDFLAGS) $(CFLAGS) -DMAIN parser.c -o parser
+	$(CC) $(CFLAGS) -DMAIN parser.c $(LDFLAGS) -o parser
 
 install: $(PCOMPACT)
 	for mandir in 5 8; do \
