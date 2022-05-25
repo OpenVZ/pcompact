@@ -41,7 +41,6 @@
 
 #include <vz/vzevent.h>
 #include <vzctl/libvzctl.h>
-#include <ploop/libploop.h>
 
 #include "parser.h"
 
@@ -50,7 +49,7 @@
 #define COMPACT_LOG_FILE "/var/log/pcompact.log"
 
 static struct {
-	int threshhold;
+	int threshold;
 	int image_defrag_threshold;
 	int delta; /* how many data should be freed */
 	int log_level;
@@ -59,7 +58,7 @@ static struct {
 	int quiet;
 	int defrag;
 } config = {
-		.threshhold	= 20,
+		.threshold	= 20,
 		.image_defrag_threshold	= 10,
 		.delta		= 10,
 		.log_level	= 0,
@@ -115,199 +114,36 @@ static void *vzevent_monitor(void *arg)
 	return NULL;
 }
 
-static void print_discard_stat(struct ploop_discard_stat *pds)
-{
-	vzctl2_log(0, 0, "ploop=%ldMB image=%ldMB data=%ldMB balloon=%ldMB",
-			pds->ploop_size >> 20,
-			pds->image_size >> 20,
-			pds->data_size >> 20,
-			pds->balloon_size >> 20);
-}
-
-static void print_internal_stat(
-	const struct vps *vps,
-	const struct ploop_discard_stat *pds_before,
-	const struct ploop_discard_stat *pds_after,
-	const struct timeval *tv_elapsed )
-{
-	int old_quiet;
-
-	/* write internal stats exclusively to log file */
-	old_quiet = vzctl2_set_log_quiet(1);
-	vzctl2_log(0, 0, "Stats: uuid=%s ploop_size=%ldMB image_size_before=%ldMB"
-		" image_size_after=%ldMB compaction_time=%ld.%03lds type=%s",
-		vps->uuid,
-		pds_before->ploop_size >> 20,
-		pds_before->image_size >> 20,
-		pds_after->image_size >> 20,
-		(long)tv_elapsed->tv_sec, (long)tv_elapsed->tv_usec / 1000,
-		(vps->status == VPS_RUNNING ? "online" : "offline"));
-	vzctl2_set_log_quiet(old_quiet);
-}
-
-static void log_start(const char *uuid, const char *task_id, struct ploop_discard_stat *pds, int disk_id, double rate)
+static void log_start(const char *uuid, const char *task_id, const struct vzctl_compact_param *param)
 {
 	char out[1024];
 
-	sprintf(out, "{\"operation\":\"pcompactStart\", \"uuid\":\"%s\", "
-		"\"disk_id\":%d, \"task_id\":\"%s\", \"ploop_size\":%lu, \"image_size\":%lu, "
-		"\"data_size\":%lu, \"balloon_size\":%lu, \"rate\":%.1f, "
-		"\"config_dry\":%d, \"config_threhshold\":%d}",
-		uuid, disk_id, task_id, pds->ploop_size >> 20, pds->image_size >> 20,
-		pds->data_size >> 20, pds->balloon_size >> 20, rate, config.dry,
-		config.threshhold);
+	snprintf(out, sizeof(out), "{\"operation\":\"pcompactStart\", \"uuid\":\"%s\", "
+		"\"task_id\":\"%s\", \"config_dry\":%d, \"config_threhshold\":%d}",
+		uuid, task_id, param->dry, param->threshold);
 
 	syslog(LOG_INFO, "%s", out);
 }
 
-static void log_finish(const char *uuid, const char *task_id, const struct ploop_discard_stat *pds,
-	const struct ploop_discard_stat *pds_after, int disk_id, const struct timeval *tv_elapsed, int code)
+static void log_finish(const char *uuid, const char *task_id, int code)
 {
 	char out[1024];
 
-	sprintf(out, "{\"operation\":\"pcompactFinish\", \"uuid\":\"%s\", "
-		"\"disk_id\":%d, \"task_id\":\"%s\", \"was_compacted\":1, \"ploop_size\":%lu, "
-		"\"stats_before\": {\"image_size\":%lu, \"data_size\":%lu, \"balloon_size\":%lu}, "
-		"\"stats_after\": {\"image_size\":%lu, \"data_size\":%lu, \"balloon_size\":%lu},"
-		"\"time_spent\":\"%ld.%03lds\", \"result\":%d}",
-
-		uuid, disk_id, task_id, pds->ploop_size >> 20, pds->image_size >> 20,
-		pds->data_size >> 20, pds->balloon_size >> 20,
-		pds_after->image_size >> 20, pds_after->data_size >> 20,
-		pds_after->balloon_size >> 20, (long)tv_elapsed->tv_sec,
-		(long)tv_elapsed->tv_usec / 1000, code);
+	snprintf(out, sizeof(out), "{\"operation\":\"pcompactFinish\", \"uuid\":\"%s\", "
+		"\"task_id\":\"%s\", \"was_compacted\":1, \"result\":%d}",
+		uuid, task_id, code);
 
 	syslog(LOG_INFO, "%s", out);
 }
 
-static void log_cancel(const char *uuid, const char *task_id, int disk_id)
+static void log_cancel(const char *uuid, const char *task_id)
 {
 	char out[1024];
 
-	sprintf(out, "{\"operation\":\"pcompactFinish\", \"uuid\":\"%s\", "
-		"\"disk_id\":%d, \"task_id\":\"%s\", \"was_compacted\":0}",
-		uuid, disk_id, task_id);
+	snprintf(out, sizeof(out), "{\"operation\":\"pcompactFinish\", \"uuid\":\"%s\", "
+		"\"task_id\":\"%s\", \"was_compacted\":0}",
+		uuid, task_id);
 	syslog(LOG_INFO, "%s", out);
-}
-
-int do_maintenance_compact(struct ploop_disk_images_data *di, double rate,
-		struct ploop_discard_stat *pds)
-{
-	if (rate < config.threshhold)
-		return 1;
-
-	rate = (rate - (config.delta < rate ? config.delta : 0))
-		* pds->ploop_size / 100;
-	vzctl2_log(0, 0, "Start compacting (to free %.0fMB)",
-			rate / (1 << 20));
-	if (config.dry)
-		return 1;
-
-	struct ploop_discard_param param = {
-		.minlen_b = 0,
-		.to_free = rate,
-		.automount = 1,
-		.stop = (int *)&stop,
-		.defrag = config.defrag,
-	};
-
-	return ploop_discard(di, &param);
-}
-
-int do_compact(struct ploop_disk_images_data *di,
-		struct ploop_discard_stat *pds)
-{
-	struct ploop_discard_param param = {
-		.automount = 1,
-		.stop = (int *)&stop,
-		.defrag = config.defrag,
-		.image_defrag_threshold = config.image_defrag_threshold,
-	};
-
-	vzctl2_log(0, 0, "Start compacting");
-	return ploop_discard(di, &param);
-}
-
-int ploop_compact(const struct vps *vps, const char *descr, int disk_id)
-{
-	int err = 0;
-	double rate;
-	char task_id[39] = "";
-	char dev[64], part[64];
-	struct ploop_disk_images_data *di;
-	struct ploop_discard_stat pds, pds_after;
-	struct timeval tv_before, tv_after, tv_delta;
-	struct stat st;
-	uuid_t u;
-
-	if (ploop_open_dd(&di, descr))
-		return -1;
-
-	if (ploop_get_dev(di, dev, sizeof(dev)) ||
-			ploop_get_part(di, dev, part, sizeof(part))) {
-		ploop_close_dd(di);
-		return -1;
-	}
-
-	stop = 0;
-	if (stat(part, &st) == 0)
-		compact_dev = st.st_rdev;
-
-	err = ploop_discard_get_stat(di, &pds);
-	if (err) {
-		vzctl2_log(-1, 0, "Failed to get discard stat: %s",
-				ploop_get_last_error());
-		ploop_close_dd(di);
-		return err;
-	}
-
-	if (di->nsnapshots > 1) {
-		vzctl2_log(0, 0, "This ploop image contains snapshots."
-			" Trying to compact the last delta file.");
-		vzctl2_log(0, 0, "For best compacting results, remove snapshots.");
-	}
-
-	print_discard_stat(&pds);
-
-	rate = ((double) pds.image_size - pds.data_size) / pds.ploop_size * 100;
-	/* Image size can be less than data size. to avoid negative rate */
-	if (rate < 0)
-		rate = 0;
-
-	vzctl2_log(0, 0, "Rate: %.1f (threshold=%d)",
-			rate, config.threshhold);
-
-	uuid_generate(u);
-	uuid_unparse(u, task_id);
-
-	log_start(vps->uuid, task_id, &pds, disk_id, rate);
-
-	/* store time before compacting */
-	gettimeofday(&tv_before, NULL);
-
-	if (pds.native_discard)
-		err = do_compact(di, &pds);
-	else
-		err = do_maintenance_compact(di, rate, &pds);
-
-	if (err == 0) {
-		/* store time after compacting */
-		gettimeofday(&tv_after, NULL);
-		timersub(&tv_after, &tv_before, &tv_delta);
-
-		if (ploop_discard_get_stat(di, &pds_after) == 0) {
-			print_discard_stat(&pds_after);
-			print_internal_stat(vps, &pds, &pds_after, &tv_delta);
-		}
-
-		log_finish(vps->uuid, task_id, &pds, &pds_after, disk_id, &tv_delta, err);
-		vzctl2_log(0, 0, "End compacting");
-	} else
-		log_cancel(vps->uuid, task_id, disk_id);
-
-	ploop_close_dd(di);
-	compact_dev = 0;
-	return err;
 }
 
 static int parse_config()
@@ -323,7 +159,7 @@ static int parse_config()
 	res = NULL;
 	vzctl2_conf_get_param(conf, "THRESHOLD", &res);
 	if (res)
-		config.threshhold = atoi(res);
+		config.threshold = atoi(res);
 	res = NULL;
 	vzctl2_conf_get_param(conf, "IMAGE_DEFRAG_THRESHOLD", &res);
 	if (res)
@@ -365,7 +201,7 @@ static int open_state_file()
 		return err;
 	}
 
-	buf[sizeof(buf) - 1] = '\0';
+	memset(buf, 0, sizeof(buf));
 	err = read(fd, buf, sizeof(buf) - 1);
 	if (err == -1) {
 		vzctl2_log(-1, errno, "Can't read %s", COMPACT_STATE);
@@ -417,8 +253,11 @@ static int scan()
 		return 1;
 
 	pstate = open_state_file();
-	if (pstate < 0)
+	if (pstate < 0) {
+		closelog();
+		vps_list_free(&vpses);
 		return -1;
+	}
 
 	if (pstate > vpses.num)
 		pstate = 0;
@@ -428,10 +267,21 @@ static int scan()
 	openlog("pcompact", LOG_PID, LOG_INFO | LOG_USER);
 
 	for (i = 0; i < vpses.num && keep_running; i++) {
-		struct vps_disk_list d;
-		int mount = 0, ret;
-		char cmd[128];
-		int j;
+		int ret = 0;
+		int flags = 0;
+		int isCompactEnabled = 0;
+		ctid_t ctID;
+		struct vzctl_env_handle *h = NULL;
+		char task_id[39] = "";
+		uuid_t task_uuid;
+		struct vzctl_compact_param param = {
+				.defrag = config.defrag,
+				.threshold = config.threshold,
+				.delta = config.delta,
+				.dry = config.dry,
+				.stop = (int *)&stop,
+				.compact_dev = &compact_dev,
+		};
 
 		vps = (i + pstate) % vpses.num;
 
@@ -441,37 +291,39 @@ static int scan()
 		if (err < 0)
 			goto out;
 
-		err = vps_get_disks(vpses.vpses + vps, &d);
-		if (err || d.disks == NULL)
+		if (vzctl2_parse_ctid(vpses.vpses[vps].uuid, ctID)) {
+			vzctl2_log(-1, 0, "Error: Invalid CT ID %s. Skip it", vpses.vpses[vps].uuid);
 			continue;
-
-		if (vpses.vpses[vps].status == VPS_STOPPED) {
-			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl mount %s --verbose %d",
-							vpses.vpses[vps].uuid, config.quiet ? -1 : config.log_level);
-			ret = system(cmd);
-			if (ret)
-				vzctl2_log(-1, 0, "%s returned code %d", cmd, ret);
-			else
-				mount = 1;
+		}
+		h = vzctl2_env_open(ctID, flags, &ret);
+		if (ret || !h){
+			vzctl2_log(-1, 0, "Error [%d]: cannot open CT [%s]. Skip it", ret, ctID);
+			continue;
 		}
 
-		for (j = 0; j < d.num && keep_running; j++) {
-			vzctl2_log(0, 0, "Inspect %s", d.disks[j]);
-			if (vpses.vpses[vps].type != VPS_CT)
-				continue;
+		stop = 0;
 
-			ploop_compact(&vpses.vpses[vps], d.disks[j], j);
+		vzctl2_env_get_autocompact(vzctl2_get_env_param(h), &isCompactEnabled);
+		if (isCompactEnabled == 0) {
+			//skip current CT
+			vzctl2_env_close(h);
+			continue;
 		}
 
-		vps_disk_list_free(&d);
+		uuid_generate(task_uuid);
+		uuid_unparse(task_uuid, task_id);
 
-		if (mount) {
-			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl umount %s --verbose %d",
-							vpses.vpses[vps].uuid, config.quiet ? -1 : config.log_level);
-			ret = system(cmd);
-			if (ret)
-				vzctl2_log(-1, 0, "%s returned code %d", cmd, ret);
-		}
+		log_start(vpses.vpses[vps].uuid, task_id, &param);
+
+		ret = vzctl2_env_compact(h, &param, sizeof(param));
+
+		if (ret) {
+			vzctl2_log(-1, 0, "vzctl2_env_compact return error code: %d", ret);
+			log_cancel(vpses.vpses[vps].uuid, task_id);
+		} else
+			log_finish(vpses.vpses[vps].uuid, task_id, err);
+
+		vzctl2_env_close(h);
 
 		if (config.oneshot)
 			break;

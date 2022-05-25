@@ -49,15 +49,7 @@ struct vps_list {
 	int num;
 };
 
-struct vps_disk_list {
-	char **disks;
-	int size;
-	int num;
-};
-
 extern int vps_get_list(struct vps_list *l);
 extern void vps_list_free(struct vps_list *l);
-extern int vps_get_disks(struct vps *vps, struct vps_disk_list *l);
-extern void vps_disk_list_free(struct vps_disk_list *l);
 
 #endif

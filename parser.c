@@ -33,9 +33,6 @@
 #include "parser.h"
 
 static char key[128];
-static int hdd_section;
-static int skip_disk;
-static int autocompact_disabled;
 
 static int yajl_map_key(void *ctx, const unsigned char *stringVal,
 							size_t stringLen)
@@ -61,16 +58,8 @@ static int list_yajl_string(void *ctx, const unsigned char * stringVal,
 		return 1;
 	}
 
-	if (!strcmp(key, "type")) {
-		if (!strncmp("CT", stringVal, stringLen))
-			l->vpses[l->num].type = VPS_CT;
-		else if (!strncmp("VM", stringVal, stringLen))
-			l->vpses[l->num].type = VPS_VM;
-		else {
-			vzctl2_log(-1, 0, "Unknown type: %.*s", (int)stringLen, stringVal);
-			return -1;
-		}
-	}
+	//only for CT
+	l->vpses[l->num].type = VPS_CT;
 
 	if (!strcmp(key, "status")) {
 		if (!strncmp("running", stringVal, stringLen))
@@ -109,84 +98,6 @@ static int list_yajl_end_map(void * ctx)
 	struct vps_list *l = (struct vps_list *) ctx;
 
 	l->num++;
-	return 1;
-}
-
-static int disk_yajl_start_map(void * ctx)
-{
-	/* new entry */
-	if (!strncmp(key, "ID", 2))
-		autocompact_disabled = 0;
-	else if (!strncmp(key, "hdd", 3)) {
-		hdd_section = 1;
-		skip_disk = 0;
-	}
-	return 1;
-}
-
-static int disk_yajl_end_map(void * ctx)
-{
-	if (skip_disk) {
-		struct vps_disk_list *l = (struct vps_disk_list *) ctx;
-
-		free(l->disks[--l->num]);
-		l->disks[l->num] = NULL;
-		skip_disk = 0;
-	}
-
-	hdd_section = 0;
-	return 1;
-}
-
-static int add_disk_entry(struct vps_disk_list *l, const char *stringVal,
-		unsigned int stringLen)
-{
-	const char ddxml[] = "/DiskDescriptor.xml";
-
-	if (l->size < (l->num + 1) * sizeof(char *)) {
-		int size = l->size + 4096;
-		void *p = realloc(l->disks, size);
-		if (p == NULL) {
-			vzctl2_log(-1, ENOMEM, "Not enought memory");
-			return -1;
-		}
-		l->disks = p;
-		l->size = size;
-	}
-
-	l->disks[l->num] = malloc(stringLen + 1 + strlen(ddxml));
-	if (l->disks[l->num] == NULL) {
-		vzctl2_log(-1, ENOMEM, "Not enought memory");
-		return -1;
-	}
-	l->disks[l->num][stringLen + strlen(ddxml)] = '\0';
-	memcpy(l->disks[l->num], stringVal, stringLen);
-	memcpy(l->disks[l->num] + stringLen, ddxml, sizeof(ddxml));
-
-	l->num++;
-
-	return 1;
-}
-
-static int disk_yajl_string(void *ctx, const unsigned char *stringVal,
-		size_t stringLen)
-{
-	struct vps_disk_list *l = (struct vps_disk_list *) ctx;
-
-	if (!strcmp(key, "Autocompact")) {
-		autocompact_disabled = (strncmp(stringVal, "off", stringLen) == 0);
-	} else if (!autocompact_disabled && hdd_section) {
-		if (!strcmp(key, "image")) {
-			return add_disk_entry(l, stringVal, stringLen);
-		} else if (!strcmp(key, "backup")) {
-			skip_disk = 1;
-		} else if (!strcmp(key, "autocompact") && !strncmp(stringVal, "off", stringLen)) {
-			skip_disk = 1;
-		}
-	}
-
-	key[0] = '\0';
-
 	return 1;
 }
 
@@ -254,7 +165,7 @@ wait:
 	}
 
 	if (!WIFEXITED(status) || WEXITSTATUS(status)) {
-		fprintf(stderr, "prlctl return non-zero code %d\n", status);
+		fprintf(stderr, "%s return non-zero code %d\n", argv[0], status);
 		exit_code = -11;
 	}
 free:
@@ -272,7 +183,7 @@ int vps_get_list(struct vps_list *l)
 					.yajl_start_map	= list_yajl_start_map,
 					.yajl_end_map	= list_yajl_end_map,
 				};
-	char *argv[] = {"prlctl", "list", "-aj", "--vmtype=ct", NULL};
+	char *argv[] = {"vzlist", "-aj", "-o" , "uuid,status", NULL};
 
 	l->num = 0;
 	l->size = 0;
@@ -286,42 +197,9 @@ int vps_get_list(struct vps_list *l)
 	return ret;
 }
 
-int vps_get_disks(struct vps *vps, struct vps_disk_list *l)
-{
-	int ret;
-	yajl_callbacks callbacks = {
-					.yajl_map_key	= yajl_map_key,
-					.yajl_string	= disk_yajl_string,
-					.yajl_start_map	= disk_yajl_start_map,
-					.yajl_end_map	= disk_yajl_end_map,
-				};
-	char *argv[] = {"prlctl", "list", "-iHj", vps->uuid, NULL};
-
-	l->num = 0;
-	l->size = 0;
-	l->disks = NULL;
-
-	ret = parse_command(argv, &callbacks, l);
-	if (ret) {
-		vzctl2_log(-1, 0, "Failed to get Container %s disks list",
-				vps->uuid);
-		vps_disk_list_free(l);
-	}
-	return ret;
-}
-
 void vps_list_free(struct vps_list *l)
 {
 	free(l->vpses);
-}
-
-void vps_disk_list_free(struct vps_disk_list *l)
-{
-	int i;
-
-	for (i = 0; i < l->num; i++)
-		free(l->disks[i]);
-	free(l->disks);
 }
 
 #ifdef MAIN
@@ -344,10 +222,6 @@ int main(int argc, char **argv)
 		struct vps_disk_list disk_list;
 		int j;
 		printf("%s %d\n", list.vpses[i].uuid, list.vpses[i].type);
-		vps_get_disks(list.vpses + i, &disk_list);
-		for (j = 0; j < disk_list.num; j++)
-			printf("%s\n", disk_list.disks[j]);
-		vps_disk_list_free(&disk_list);
 	}
 
 	vps_list_free(&list);
