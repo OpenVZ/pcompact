@@ -446,8 +446,9 @@ static int scan()
 			continue;
 
 		if (vpses.vpses[vps].status == VPS_STOPPED) {
-			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl mount %s --verbose %d",
-							vpses.vpses[vps].uuid, config.quiet ? -1 : config.log_level);
+			snprintf(cmd, sizeof(cmd), "/usr/sbin/vzctl %smount %s",
+					config.quiet ? "" : "--verbose ", vpses.vpses[vps].uuid);
+
 			ret = system(cmd);
 			if (ret)
 				vzctl2_log(-1, 0, "%s returned code %d", cmd, ret);
@@ -466,8 +467,9 @@ static int scan()
 		vps_disk_list_free(&d);
 
 		if (mount) {
-			snprintf(cmd, sizeof(cmd), "/usr/bin/prlctl umount %s --verbose %d",
-							vpses.vpses[vps].uuid, config.quiet ? -1 : config.log_level);
+			snprintf(cmd, sizeof(cmd), "/usr/sbin/vzctl %sumount %s",
+					config.quiet ? "" : "--verbose ", vpses.vpses[vps].uuid);
+
 			ret = system(cmd);
 			if (ret)
 				vzctl2_log(-1, 0, "%s returned code %d", cmd, ret);
